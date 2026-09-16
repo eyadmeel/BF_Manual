@@ -1,0 +1,13 @@
+# 배포에 필요 없는 파일
+.venv
+venv
+**/__pycache__
+**/*.pyc
+.env
+backend/tests
+docs
+frontend/ar/server.mjs
+frontend/ar/package.json
+frontend/ar/index.html
+frontend/ar/app.js
+frontend/ar/styles.css

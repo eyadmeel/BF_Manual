@@ -1,0 +1,8 @@
+# Vercel 배포용 (backend/requirements.txt 와 동일하게 유지할 것)
+Flask==3.0.3
+flask-cors==4.0.1
+python-dotenv==1.0.1
+# AI (없어도 폴백으로 동작함)
+langchain-core==0.3.29
+langchain-openai==0.2.14
+langgraph==0.2.60
