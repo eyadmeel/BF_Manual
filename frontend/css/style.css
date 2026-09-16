@@ -119,6 +119,11 @@
 }
 /* 모바일에서 탭 시 파란 하이라이트 박스가 뜨는 것 방지 */
 #floorplan { -webkit-tap-highlight-color: transparent; }
+/* 방을 탭하면 브라우저 기본 포커스 링(검은/주황 굵은 테두리)이 생기고,
+   평면도를 확대하면 링도 같이 커져 큰 원처럼 보인다. 터치·마우스 포커스 링은 숨긴다. */
+.room-hit:focus { outline: none; }
+/* 키보드로 이동할 때만 얇은 청록 테두리로 표시 (접근성 유지) */
+.room-hit:focus-visible { outline: none; stroke: #22d3ee; stroke-width: 0.4; }
 
 
 /* --------------------------------------------------------------------------
