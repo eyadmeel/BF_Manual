@@ -14,6 +14,11 @@
  */
 
 const BASE_URL = '/api';
+
+/** GET /api/config — 프론트엔드 공개 설정 */
+export function getConfig() {
+  return request('/config');
+}
 const TIMEOUT_MS = 8000;
 
 /**

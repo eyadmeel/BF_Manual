@@ -12,7 +12,13 @@
  *   - 도움 요청은 미리보기 후 기기의 문자 앱으로 전달할 수 있다.
  */
 
-import { postRoute, postGuide, postReroute, postHelpMessage } from '../api.js';
+import {
+  postRoute,
+  postGuide,
+  postReroute,
+  postHelpMessage,
+  getConfig,
+} from '../api.js';
 import {
   initFloorplan,
   renderFloor,
@@ -81,6 +87,17 @@ const helpCloseBtn = $('btn-help-close');
 const helpCopyBtn = $('btn-help-copy');
 const helpKakaoBtn = $('btn-help-kakao');
 const toastEl = $('toast');
+
+async function initKakao() {
+  try {
+    const { kakao_javascript_key: key } = await getConfig();
+    if (key && window.Kakao && !window.Kakao.isInitialized()) window.Kakao.init(key);
+  } catch (err) {
+    console.warn('[screen2] 카카오 공유 설정을 불러오지 못했습니다.', err);
+  }
+}
+
+initKakao();
 
 // screen1 과 같은 이동 상태 아이콘 (고정 상수, stroke + currentColor)
 const ICON_PATHS = {
