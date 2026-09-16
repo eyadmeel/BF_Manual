@@ -244,8 +244,7 @@ function render() {
   $('#routeShadow').setAttribute('points', points);
   $('#exitDot').setAttribute('cx', route.at(-1)[0]);
   $('#exitDot').setAttribute('cy', route.at(-1)[1]);
-  $('#walker').style.left = `${point[0]}%`;
-  $('#walker').style.top = `${point[1]}%`;
+  applyMapZoom(point);
   $('#progress').textContent =
     pct >= 100
       ? destinationType === 'exit'
@@ -259,6 +258,60 @@ function render() {
     ? `제외된 경로 ${rejected.length}개`
     : '제외된 경로 없음';
   $('#resetButton').disabled = !rejected.length;
+}
+
+/* ───────── 경로 지도 확대 ───────── */
+
+/**
+ * 경로 지도 모달은 열리자마자 경로 구간이 꽉 차게 확대된 상태로 보여준다.
+ * 이미지와 경로선(svg)을 한 틀(.map-zoom)에 넣고 CSS transform 으로 확대·이동한다.
+ * 보행자 아이콘은 크기가 같이 커지지 않도록 틀 밖에 두고 위치만 계산한다.
+ */
+let mapZoomEl = null;
+let mapZoom = { s: 1, tx: 0, ty: 0 };
+
+function ensureMapZoomWrapper() {
+  if (mapZoomEl) return mapZoomEl;
+  const view = document.querySelector('#screen3 .map-view');
+  const img = $('#mapImage');
+  const svg = view?.querySelector('svg');
+  if (!view || !img || !svg) return null;
+  mapZoomEl = document.createElement('div');
+  mapZoomEl.className = 'map-zoom';
+  view.insertBefore(mapZoomEl, img);
+  mapZoomEl.append(img, svg);
+  return mapZoomEl;
+}
+
+function computeMapZoom() {
+  const PAD = 8; // 경로 주변 여백(%)
+  const MAX_SCALE = 3;
+  const xs = route.map((p) => p[0]);
+  const ys = route.map((p) => p[1]);
+  const minX = Math.min(...xs) - PAD;
+  const maxX = Math.max(...xs) + PAD;
+  const minY = Math.min(...ys) - PAD;
+  const maxY = Math.max(...ys) + PAD;
+  // 가로·세로 % 는 같은 비율로 커지므로 더 넓은 쪽 기준으로 확대 배율을 정한다
+  const sc = Math.max(1, Math.min(MAX_SCALE, 100 / (maxX - minX), 100 / (maxY - minY)));
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  // 화면 중앙에 경로 중심이 오게, 평면도 밖 빈 공간이 보이지 않게 이동량을 제한한다
+  const clamp = (v) => Math.max(100 - 100 * sc, Math.min(0, v));
+  return { s: sc, tx: clamp(50 - cx * sc), ty: clamp(50 - cy * sc) };
+}
+
+function applyMapZoom(point) {
+  const box = ensureMapZoomWrapper();
+  const img = getState().building?.floor_images?.[String(Number.parseInt(floor, 10))];
+  if (box) {
+    if (img) box.style.aspectRatio = `${img.width} / ${img.height}`;
+    mapZoom = computeMapZoom();
+    box.style.transform = `translate(${mapZoom.tx}%, ${mapZoom.ty}%) scale(${mapZoom.s})`;
+  }
+  // 보행자 아이콘: 확대된 좌표로 환산해 위치만 옮긴다
+  $('#walker').style.left = `${point[0] * mapZoom.s + mapZoom.tx}%`;
+  $('#walker').style.top = `${point[1] * mapZoom.s + mapZoom.ty}%`;
 }
 
 function syncFireLocation() {

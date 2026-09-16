@@ -26,6 +26,8 @@ import {
   clearPath,
   renderHazard,
   markStart,
+  zoomToNodes,
+  resetZoom,
 } from '../floorplan.js';
 import {
   SCREEN,
@@ -43,6 +45,7 @@ import {
   nextPendingEvent,
   nodesOnFloor,
   edgesOnFloor,
+  nodeById,
   mobilityLabel,
   hasRoute,
   isNoRoute,
@@ -192,6 +195,8 @@ function syncScreen(s) {
   }
   // floorplan.js 가 이벤트 위임 중복 등록을 막는다
   initFloorplan({ onSelectRoom: handleSelectRoom });
+  // 평면도를 두 번 탭하면 전체 보기로 돌아간다
+  floorplanEl.addEventListener('dblclick', () => resetZoom());
   drawPlan(s, []);
 }
 
@@ -213,6 +218,19 @@ function drawPlan(s, changed) {
   if (hasRoute()) renderPath(pathRunOnFloor(s.route.path, s.floor));
   else clearPath();
   markStart(s.route?.start?.id ?? s.startNodeId);
+
+  // 현재 위치를 탭하면 그 주변(경로가 있으면 경로 전체)으로 확대한다
+  if (changed.includes('route') || changed.includes('startNodeId')) {
+    const onFloor = hasRoute() ? pathRunOnFloor(s.route.path, s.floor) : [];
+    if (onFloor.length >= 2) {
+      zoomToNodes(onFloor, { padding: 7, minWidth: 45 });
+    } else {
+      const here = nodeById(s.route?.start?.id ?? s.startNodeId);
+      if (here && Number(here.floor) === Number(s.floor)) {
+        zoomToNodes([here], { padding: 10, minWidth: 45 });
+      }
+    }
+  }
 }
 
 function syncSummary(s) {

@@ -66,6 +66,10 @@ let lastPathPoints = null;
 // 현재 층 표시 방식 (renderFloor 가 정한다). 이미지 모드면 y 에 yScale 을 곱한다.
 let yScale = 1;
 let imageMode = false;
+// 줌 상태: 현재 viewBox 와 층 식별값 (층이 바뀔 때만 전체 보기로 되돌린다)
+let view = null;          // { x, y, w, h }
+let viewKey = null;
+let zoomAnim = 0;
 
 const ROOM_W_IMG = 6;
 const ROOM_H_IMG = 5.4;
@@ -275,7 +279,14 @@ export function renderFloor({ nodes = [], edges = [], floor, image = null }) {
   // 평면도 이미지 배경
   imageMode = !!(image && image.src && image.width && image.height);
   yScale = imageMode ? image.height / image.width : 1;
-  svg.setAttribute('viewBox', `0 0 100 ${100 * yScale}`);
+  const key = `${floor}|${imageMode ? image.src : ''}`;
+  if (key !== viewKey || !view) {
+    // 층이 바뀌면 전체 보기로
+    viewKey = key;
+    cancelAnimationFrame(zoomAnim);
+    view = fullView();
+    applyView(svg, view);
+  }
   let bg = svg.querySelector('image.floor-image');
   if (imageMode) {
     if (!bg) {
@@ -352,6 +363,70 @@ export function renderPath(pathNodes = []) {
   }
 
   lastPathPoints = nextPoints;
+}
+
+/* ───────── 줌 ───────── */
+
+function fullView() {
+  return { x: 0, y: 0, w: 100, h: 100 * yScale };
+}
+
+function applyView(svg, v) {
+  svg.setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`);
+}
+
+/** viewBox 를 부드럽게 옮긴다 (약 0.45초) */
+function animateView(target) {
+  const svg = getLayer('floorplan');
+  const from = view || fullView();
+  const start = performance.now();
+  const DURATION = 450;
+  cancelAnimationFrame(zoomAnim);
+  const step = now => {
+    const t = Math.min(1, (now - start) / DURATION);
+    const e = 1 - Math.pow(1 - t, 3); // easeOutCubic
+    view = {
+      x: from.x + (target.x - from.x) * e,
+      y: from.y + (target.y - from.y) * e,
+      w: from.w + (target.w - from.w) * e,
+      h: from.h + (target.h - from.h) * e,
+    };
+    applyView(svg, view);
+    if (t < 1) zoomAnim = requestAnimationFrame(step);
+  };
+  zoomAnim = requestAnimationFrame(step);
+}
+
+/**
+ * 주어진 노드들이 모두 보이도록 확대한다. (경로를 계산하지 않고 받은 좌표의 범위만 본다)
+ * 화면 비율은 전체 평면도와 같게 유지하고, 평면도 밖으로 벗어나지 않게 맞춘다.
+ * @param {object[]} nodes  x,y 가 있는 노드 배열 (예: 현재 층 경로 노드, 또는 [시작 노드])
+ * @param {object} [opt]    { padding: 여백(%), minWidth: 최소 보기 폭(%) }
+ */
+export function zoomToNodes(nodes = [], { padding = 8, minWidth = 40 } = {}) {
+  const pts = nodes.filter(hasPoint).map(px);
+  if (!pts.length) return;
+  const full = fullView();
+  const aspect = full.h / full.w;
+
+  let minX = Math.min(...pts.map(p => p.x)) - padding;
+  let maxX = Math.max(...pts.map(p => p.x)) + padding;
+  let minY = Math.min(...pts.map(p => p.y)) - padding;
+  let maxY = Math.max(...pts.map(p => p.y)) + padding;
+
+  let w = Math.max(maxX - minX, (maxY - minY) / aspect, minWidth);
+  w = Math.min(w, full.w);
+  const h = w * aspect;
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const x = Math.max(0, Math.min(full.w - w, cx - w / 2));
+  const y = Math.max(0, Math.min(full.h - h, cy - h / 2));
+  animateView({ x, y, w, h });
+}
+
+/** 전체 평면도 보기로 되돌린다. */
+export function resetZoom() {
+  animateView(fullView());
 }
 
 /** 경로 레이어와 직전 경로 캐시를 비운다. */

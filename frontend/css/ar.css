@@ -2238,3 +2238,38 @@
     animation-iteration-count: infinite !important;
   }
 }
+
+/* ==========================================================================
+   경로 지도 확대 (screen3.js applyMapZoom)
+   이미지+경로선 틀을 확대하고, 틀 밖은 잘라낸다. 보행자 아이콘은 틀 밖.
+   ========================================================================== */
+#screen3 .map-view {
+  overflow: hidden;
+}
+#screen3 .map-zoom {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1448 / 1086;
+  transform-origin: 0 0;
+  transition: transform 0.35s ease-out;
+}
+#screen3 .map-zoom img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: none !important;
+  object-fit: fill !important;
+}
+#screen3 .map-zoom svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* 확대되면 선이 두꺼워지므로 화면 두께를 유지 */
+#screen3 .map-zoom .route,
+#screen3 .map-zoom .route-shadow {
+  vector-effect: non-scaling-stroke;
+}
+#screen3 .map-zoom .route { stroke-width: 3px; }
+#screen3 .map-zoom .route-shadow { stroke-width: 6px; }
