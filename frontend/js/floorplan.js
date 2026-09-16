@@ -497,7 +497,8 @@ export function markStart(nodeId) {
   nodeLayer.querySelectorAll('.start-marker').forEach(el => el.remove());
   nodeLayer.querySelectorAll('g[data-start="true"]').forEach(group => {
     delete group.dataset.start;
-    group.querySelector('.room-shape')?.setAttribute('stroke', COLORS.roomStroke);
+    group.querySelector('.room-shape')?.setAttribute('stroke', imageMode ? 'transparent' : COLORS.roomStroke);
+    group.querySelector('.room-shape')?.setAttribute('fill', imageMode ? 'transparent' : COLORS.roomFill);
     group.querySelector('.room-shape')?.setAttribute('stroke-width', String(ROOM_STROKE_WIDTH));
     group.querySelector('.room-label')?.setAttribute('fill', COLORS.roomText);
   });
@@ -507,15 +508,26 @@ export function markStart(nodeId) {
   if (!group) return;
 
   group.dataset.start = 'true';
+  // 이미지 모드는 확대해서 보므로 강조를 얇고 작게 한다
   group.querySelector('.room-shape')?.setAttribute('stroke', COLORS.start);
-  group.querySelector('.room-shape')?.setAttribute('stroke-width', '1.4');
+  group.querySelector('.room-shape')?.setAttribute('stroke-width', imageMode ? '0.4' : '1.4');
+  group.querySelector('.room-shape')?.setAttribute('fill', imageMode ? 'rgba(34, 211, 238, .12)' : COLORS.roomFill);
   group.querySelector('.room-label')?.setAttribute('fill', COLORS.startText);
 
   const x = Number(group.dataset.x);
   const y = Number(group.dataset.y);
   const marker = createSvg('g', { class: 'start-marker', 'pointer-events': 'none' }, nodeLayer);
+  if (imageMode) {
+    // 현재지점: 작은 점 + 얇은 링 (방 번호가 가려지지 않게 방 위쪽 모서리에)
+    const my = group.dataset.type === 'room' ? y - ROOM_H_IMG / 2 : y;
+    createSvg('circle', {
+      cx: x, cy: my, r: 1.6, fill: 'none', stroke: COLORS.start, 'stroke-width': 0.3, opacity: 0.8,
+    }, marker);
+    createSvg('circle', { cx: x, cy: my, r: 0.8, fill: COLORS.start, stroke: '#ffffff', 'stroke-width': 0.2 }, marker);
+    return;
+  }
   createSvg('circle', {
-    cx: x, cy: y, r: imageMode ? 5 : 9, fill: 'none', stroke: COLORS.start, 'stroke-width': 0.6, opacity: 0.6,
+    cx: x, cy: y, r: 9, fill: 'none', stroke: COLORS.start, 'stroke-width': 0.6, opacity: 0.6,
   }, marker);
   // 방이 아닌 지점(재탐색 시 복도 등)은 사각형 강조가 없으므로 점을 찍는다
   if (group.dataset.type !== 'room') {
