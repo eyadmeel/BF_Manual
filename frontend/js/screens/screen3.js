@@ -22,6 +22,7 @@
 
 import { advanceDistance, largeObstacle } from '../ar-core.js';
 import { postReroute } from '../api.js';
+import { bindZoomGestures } from '../zoom-gestures.js';
 import {
   SCREEN,
   getState,
@@ -269,6 +270,8 @@ function render() {
  */
 let mapZoomEl = null;
 let mapZoom = { s: 1, tx: 0, ty: 0 };
+let mapZoomedIn = true; // 모달을 열 때마다 확대 상태로 시작
+let lastWalkerPoint = [0, 0];
 
 function ensureMapZoomWrapper() {
   if (mapZoomEl) return mapZoomEl;
@@ -280,6 +283,11 @@ function ensureMapZoomWrapper() {
   mapZoomEl.className = 'map-zoom';
   view.insertBefore(mapZoomEl, img);
   mapZoomEl.append(img, svg);
+  // 두 번 탭: 확대 ↔ 전체 보기 / 두 손가락 터치: 전체 보기
+  bindZoomGestures(view, {
+    onDoubleTap: () => { mapZoomedIn = !mapZoomedIn; applyMapZoom(lastWalkerPoint); },
+    onTwoFinger: () => { mapZoomedIn = false; applyMapZoom(lastWalkerPoint); },
+  });
   return mapZoomEl;
 }
 
@@ -306,9 +314,10 @@ function applyMapZoom(point) {
   const img = getState().building?.floor_images?.[String(Number.parseInt(floor, 10))];
   if (box) {
     if (img) box.style.aspectRatio = `${img.width} / ${img.height}`;
-    mapZoom = computeMapZoom();
+    mapZoom = mapZoomedIn ? computeMapZoom() : { s: 1, tx: 0, ty: 0 };
     box.style.transform = `translate(${mapZoom.tx}%, ${mapZoom.ty}%) scale(${mapZoom.s})`;
   }
+  lastWalkerPoint = point;
   // 보행자 아이콘: 확대된 좌표로 환산해 위치만 옮긴다
   $('#walker').style.left = `${point[0] * mapZoom.s + mapZoom.tx}%`;
   $('#walker').style.top = `${point[1] * mapZoom.s + mapZoom.ty}%`;
@@ -740,6 +749,7 @@ $('#arBackButton').addEventListener('click', () => goScreen(SCREEN.PLAN));
 $('#mapButton').addEventListener('click', () => {
   $('#mapModal').hidden = false;
   $('#mapButton').classList.add('active');
+  mapZoomedIn = true; // 열 때는 항상 경로 확대 상태
   render();
 });
 $('#mapClose').addEventListener('click', () => {

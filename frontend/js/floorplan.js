@@ -70,6 +70,9 @@ let imageMode = false;
 let view = null;          // { x, y, w, h }
 let viewKey = null;
 let zoomAnim = 0;
+// 더블탭 제스처와 방 선택이 겹치지 않게 선택을 잠깐 미룬다
+const SELECT_DELAY_MS = 330;
+let pendingSelect = 0;
 
 const ROOM_W_IMG = 6;
 const ROOM_H_IMG = 5.4;
@@ -258,7 +261,12 @@ export function initFloorplan({ onSelectRoom } = {}) {
     if (hit && typeof onSelectRoom === 'function') onSelectRoom(hit.dataset.nodeId);
   };
 
-  svg.addEventListener('click', event => selectFrom(event.target));
+  // 탭은 잠깐 기다렸다가 선택한다. 그 사이 두 번째 탭이 오면 줌 제스처로 보고 선택을 취소한다.
+  svg.addEventListener('click', event => {
+    const target = event.target;
+    clearTimeout(pendingSelect);
+    pendingSelect = setTimeout(() => selectFrom(target), SELECT_DELAY_MS);
+  });
   // 키보드 사용자도 방을 선택할 수 있게
   svg.addEventListener('keydown', event => {
     if ((event.key === 'Enter' || event.key === ' ') && event.target?.closest?.('.room-hit')) {
@@ -422,6 +430,17 @@ export function zoomToNodes(nodes = [], { padding = 8, minWidth = 40 } = {}) {
   const x = Math.max(0, Math.min(full.w - w, cx - w / 2));
   const y = Math.max(0, Math.min(full.h - h, cy - h / 2));
   animateView({ x, y, w, h });
+}
+
+/** 대기 중인 방 선택을 취소한다 (더블탭 줌 제스처가 인식됐을 때) */
+export function cancelPendingSelect() {
+  clearTimeout(pendingSelect);
+}
+
+/** 지금 확대된 상태인지 (전체 보기보다 좁게 보고 있는지) */
+export function isZoomed() {
+  const full = fullView();
+  return !!view && view.w < full.w - 0.5;
 }
 
 /** 전체 평면도 보기로 되돌린다. */
