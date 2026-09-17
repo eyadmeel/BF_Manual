@@ -339,6 +339,13 @@ function speak(text, force = false) {
   speechSynthesis.speak(u);
 }
 
+function setVoiceEnabled(enabled) {
+  voice = !!enabled;
+  $('#voiceButton').classList.toggle('active', voice);
+  $('#voiceButton').setAttribute('aria-pressed', String(voice));
+  if (!voice) window.speechSynthesis?.cancel();
+}
+
 /* ───────── 카메라 ───────── */
 
 /**
@@ -703,6 +710,8 @@ function setSignal(on) {
 /* ───────── 화면 진입 / 이탈 ───────── */
 
 function enter() {
+  // 화면 3에 들어올 때마다 음성 안내를 기본 활성 상태로 되돌린다.
+  setVoiceEnabled(true);
   loadFromState();
   $('#arrow').className = 'arrow forward';
   $('#direction').textContent = '앞으로 직진하세요';
@@ -719,6 +728,9 @@ function enter() {
   }
   updateNextTurnHint();
   startSensors();
+  const direction = $('#direction').textContent.trim();
+  const hint = document.querySelector('#screen3 .direction-card p')?.textContent.trim();
+  speak([direction, hint].filter(Boolean).join('. '), true);
 }
 
 function leave() {
@@ -773,11 +785,8 @@ $('#torchButton').addEventListener('click', async () => {
 });
 
 $('#voiceButton').addEventListener('click', () => {
-  voice = !voice;
-  $('#voiceButton').classList.toggle('active', voice);
-  $('#voiceButton').setAttribute('aria-pressed', String(voice));
+  setVoiceEnabled(!voice);
   if (voice) speak($('#direction').textContent, true);
-  else window.speechSynthesis?.cancel();
 });
 
 $('#signalButton').addEventListener('click', () => setSignal(!signal));

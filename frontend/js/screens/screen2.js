@@ -409,9 +409,13 @@ function syncSummary(s) {
     const detail = summaryEmpty.querySelector('p:last-child');
     if (scenario?.origin_node) {
       title.textContent = `화재 발생: ${scenario.name}`;
+      title.classList.remove('text-white');
+      title.classList.add('text-red-400');
       detail.textContent = '붉은 화재 지점을 확인한 뒤 평면도에서 현재 위치를 선택하세요.';
     } else {
       title.textContent = '평면도에서 현재 위치를 선택하세요';
+      title.classList.remove('text-red-400');
+      title.classList.add('text-white');
       detail.textContent = '평면도에서 방을 탭하면 대피 경로가 계산됩니다.';
     }
     show('empty');
