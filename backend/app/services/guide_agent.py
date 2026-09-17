@@ -1,32 +1,39 @@
-"""대피 행동요령 생성 Agent (LangGraph StateGraph).
+"""대피 행동요령 생성 Agent (LangChain + LangGraph + RAG).
 
 설계 원칙 (기획서 8-3 준수):
   AI는 경로나 화재 위치를 판단하지 않는다.
   이미 계산된 경로 + 시설 정보를 '사람이 읽을 문장'으로 바꾸기만 한다.
   그래프 안에서 경로를 다시 계산하지 않는다 (pathfinder 를 호출하지 않는다).
+  매뉴얼 검색(RAG)은 문장을 정확하게 다듬는 참고 자료일 뿐, 경로·목적지를 바꾸지 않는다.
 
 흐름 (그래프가 제어한다):
 
     START
       │ route_entry: OPENAI_API_KEY 없음 또는 route.status != "ok"
-      ├──────────────────────────────────────────────┐
-      ▼                                              │
-    summarize   경로 결과 → LLM 입력 요약             │
-      │  (추후) retrieve: 매뉴얼 검색(RAG) 자리        │
-      ▼                                              │
-    generate    OpenAI 호출. 예외는 state.error 에 기록 │
-      ▼                                              │
-    validate    형식·금지 표현·노드ID·목적지 분기 검사   │
-      │ route_after_validate                          │
-      ├── 통과 ──▶ finalize  source="ai", 주의문구 추가 │
-      └── 실패/에러 ─▶ fallback ◀─────────────────────┘
-                        기존 템플릿 안내
+      ├───────────────────────────────────────────────────┐
+      ▼                                                   │
+    summarize   경로 결과 → LLM 입력 요약                  │
+      ▼                                                   │
+    retrieve    매뉴얼 문단 검색 (태그 필터 → 유사도, 1.5초)  │
+      │         실패·시간 초과 → 참고 자료 없이 진행         │
+      │         (state.retrieve_error 에 기록)              │
+      ▼                                                   │
+    generate    OpenAI 호출 (경로 요약 + 참고 자료)           │
+      │         예외는 state.error 에 기록                   │
+      ▼                                                   │
+    validate    형식·금지 표현·노드ID·목적지 분기 검사        │
+      │ route_after_validate                               │
+      ├── 통과 ──▶ finalize  source="ai", 주의문구·출처 추가   │
+      └── 실패/에러 ─▶ fallback ◀──────────────────────────┘
+                        기존 템플릿 안내 (참고 자료 미사용)
     finalize / fallback ──▶ END
 
 langgraph 를 import 할 수 없으면 같은 노드 함수를 같은 순서로 순차 실행한다.
 어떤 경우에도 generate_guide 는 예외를 던지지 않고 안내문(최소한 폴백)을 반환한다.
+응답 키: headline, steps, cautions, source, disclaimer (+ AI 안내일 때 선택 키 references)
 """
 
+import copy
 import json
 import logging
 import os
@@ -40,6 +47,11 @@ try:
 except Exception:  # noqa: BLE001 - 라이브러리가 없거나 깨져도 서비스는 살아 있어야 한다
     END = START = StateGraph = None
     _LANGGRAPH_AVAILABLE = False
+
+try:
+    from . import manual_retriever
+except Exception:  # noqa: BLE001 - 검색기를 못 불러와도 참고 자료 없이 안내는 계속한다
+    manual_retriever = None
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +79,11 @@ SYSTEM_PROMPT = """당신은 BF Manual의 '화재 대피 행동요령 작성기'
 5. 입력에 없는 설비(소화기, 비상통화장치 등)는 언급하지 않습니다. '시설_정보'에 있는 설비만 언급할 수 있습니다.
 6. 이름·연락처 등 개인정보를 묻거나 적게 하지 않습니다.
 7. 공포를 키우는 표현, 추측("아마", "~일 수도"), 전문용어를 쓰지 않습니다.
+8. '참고 자료'가 주어지면 행동 요령(자세, 문 닫기, 코와 입 가리기, 신고 등) 문장을 정확하게 다듬는 데만 씁니다.
+   - 참고 자료와 계산된 경로가 다르면 항상 계산된 경로를 따릅니다.
+   - 참고 자료를 근거로 새로운 방향·층·출구·목적지를 제시하지 않습니다.
+   - 참고 자료에 있더라도 엘리베이터·승강기, 입력에 없는 설비·장소는 쓰지 않습니다.
+   - 문서 이름·기관 이름 같은 출처는 문장에 쓰지 않습니다. (출처는 시스템이 따로 붙입니다)
 
 [문장 작성 방법]
 - 모든 문장은 "~하세요"로 끝나는 명령형 존댓말, 한 문장 40자 이내.
@@ -92,9 +109,35 @@ SYSTEM_PROMPT = """당신은 BF Manual의 '화재 대피 행동요령 작성기'
 }"""
 
 HUMAN_PROMPT = """아래는 안전 경로 탐색 엔진이 계산한 결과입니다.
-이 결과만 근거로 대피 행동요령 JSON을 작성하세요.
+경로·목적지는 이 결과만 근거로 삼아 대피 행동요령 JSON을 작성하세요.
 
 {summary}"""
+
+REFERENCE_HEADER = """[참고 자료]
+아래는 대피 매뉴얼에서 검색한 문단입니다. 행동 요령 문장을 정확하게 다듬는 데만 참고하세요.
+참고 자료와 계산된 경로가 다르면 항상 계산된 경로를 따릅니다.
+참고 자료를 근거로 새로운 방향·층·출구·목적지를 제시하지 않습니다."""
+
+
+def build_human_prompt(summary: str, references: Optional[list] = None) -> str:
+    """경로 요약 + (있으면) 참고 자료 구역. 자료가 없으면 구역을 생략한다.
+
+    참고 자료 본문은 .format() 에 넣지 않고 이어 붙인다 (본문의 중괄호가 템플릿을 깨지 않게).
+    """
+    prompt = HUMAN_PROMPT.format(summary=summary)
+    blocks = []
+    for ref in references or []:
+        if not isinstance(ref, dict):
+            continue
+        text = str(ref.get("text") or "").strip()
+        if not text:
+            continue
+        title = str(ref.get("title") or "").strip()
+        source = " ".join(p for p in (str(ref.get("publisher") or "").strip(), f"「{title}」" if title else "") if p)
+        blocks.append(f"[자료 {len(blocks) + 1}]" + (f" 출처: {source}" if source else "") + f"\n{text}")
+    if not blocks:
+        return prompt
+    return f"{prompt}\n\n{REFERENCE_HEADER}\n\n" + "\n\n".join(blocks)
 
 REQUIRED_KEYS = ("headline", "steps", "cautions")
 FORBIDDEN = ("엘리베이터", "승강기")  # 화재 시 절대 안내하면 안 되는 표현
@@ -158,7 +201,7 @@ def summarize(route: dict) -> str:
 # --------------------------------------------------------------------------
 # 2) generate
 # --------------------------------------------------------------------------
-def _call_openai(summary: str) -> dict:
+def _call_openai(summary: str, references: Optional[list] = None) -> dict:
     from langchain_openai import ChatOpenAI
     from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -173,7 +216,7 @@ def _call_openai(summary: str) -> dict:
     resp = llm.invoke(
         [
             SystemMessage(content=SYSTEM_PROMPT),
-            HumanMessage(content=HUMAN_PROMPT.format(summary=summary)),
+            HumanMessage(content=build_human_prompt(summary, references)),
         ]
     )
     text = resp.content.strip()
@@ -270,9 +313,15 @@ class GuideState(TypedDict, total=False):
     guide: Optional[dict]    # generate 결과 → finalize/fallback 에서 최종 안내문
     error: Optional[str]     # generate 예외 또는 validate 실패 사유
     source: Optional[str]    # "ai" | "fallback"
+    references: list         # retrieve 가 찾은 매뉴얼 문단 (참고 자료. 경로와 무관)
+    retrieve_error: Optional[str]  # retrieve 실패 사유. error 와 분리: 실패해도 generate 는 진행한다
 
 
 ELEVATOR_CAUTION = "화재 시 엘리베이터를 사용하지 마세요."
+
+RETRIEVE_K = 3
+# 프론트(api.js) 요청 제한 8초 안에서: retrieve 1.5초 + generate 5초
+RETRIEVE_TIMEOUT = 1.5
 
 
 # --------------------------------------------------------------------------
@@ -283,10 +332,27 @@ def summarize_node(state: GuideState) -> dict:
     return {"summary": summarize(state["route"])}
 
 
+def retrieve_node(state: GuideState) -> dict:
+    """매뉴얼 문단만 state 에 더한다. route 는 복사본으로 넘겨 절대 바뀌지 않게 한다.
+
+    실패·시간 초과·인덱스 없음은 retrieve_error 에만 기록하고 참고 자료 없이 generate 로 진행한다.
+    """
+    if manual_retriever is None:
+        return {"references": [], "retrieve_error": "retriever_unavailable"}
+    try:
+        references, reason = manual_retriever.search_manuals(
+            copy.deepcopy(state["route"]), k=RETRIEVE_K, timeout=RETRIEVE_TIMEOUT
+        )
+    except Exception as exc:  # noqa: BLE001 - 검색 실패가 안내를 막으면 안 된다
+        log.warning("매뉴얼 검색 노드 실패(%s) → 참고 자료 없이 진행", type(exc).__name__)
+        return {"references": [], "retrieve_error": f"error: {type(exc).__name__}"}
+    return {"references": list(references or []), "retrieve_error": reason}
+
+
 def generate_node(state: GuideState) -> dict:
     try:
         # 모듈 전역 _call_openai 를 호출 시점에 찾는다 (테스트에서 교체 가능)
-        return {"guide": _call_openai(state["summary"]), "error": None}
+        return {"guide": _call_openai(state["summary"], state.get("references") or []), "error": None}
     except Exception as exc:  # noqa: BLE001 - 예외는 밖으로 던지지 않고 기록 후 fallback 으로 보낸다
         log.warning("AI 호출 실패(%s) → 폴백", exc)
         return {"guide": None, "error": f"generate: {type(exc).__name__}: {exc}"}
@@ -302,11 +368,29 @@ def validate_node(state: GuideState) -> dict:
     return {"error": "validate: AI 응답이 검증 규칙을 통과하지 못함"}
 
 
+def _reference_sources(references) -> list:
+    """참고 자료 문단 → 출처 목록 [{title, publisher, url}]. 같은 출처는 한 번만."""
+    seen, sources = set(), []
+    for ref in references or []:
+        if not isinstance(ref, dict):
+            continue
+        item = {key: str(ref.get(key) or "") for key in ("title", "publisher", "url")}
+        if not (item["title"] or item["publisher"]):
+            continue
+        key = (item["title"], item["publisher"], item["url"])
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append(item)
+    return sources
+
+
 def finalize_node(state: GuideState) -> dict:
     guide = dict(state["guide"])
     guide["source"] = "ai"
     guide["disclaimer"] = DISCLAIMER
     guide["cautions"] = list(guide.get("cautions", [])) + [ELEVATOR_CAUTION]
+    guide["references"] = _reference_sources(state.get("references"))  # 선택 키 (없으면 빈 목록)
     return {"guide": guide, "source": "ai"}
 
 
@@ -335,8 +419,7 @@ def route_after_validate(state: GuideState) -> str:
 # 노드를 추가할 때는 이 목록에 (이름, 함수) 한 줄만 끼워 넣으면 된다.
 AI_PIPELINE = [
     ("summarize", summarize_node),
-    # ("retrieve", retrieve_node),  # 추후 RAG(매뉴얼 검색) 노드 자리: summarize → retrieve → generate
-    #   retrieve 는 매뉴얼 문단을 state 에 더할 뿐, 경로·목적지를 바꾸지 않는다.
+    ("retrieve", retrieve_node),  # RAG: 매뉴얼 문단을 state 에 더할 뿐, 경로·목적지를 바꾸지 않는다
     ("generate", generate_node),
     ("validate", validate_node),
 ]
@@ -400,7 +483,15 @@ def _safe_fallback(route) -> dict:
 # 공개 함수 (시그니처·반환 형태 유지)
 # --------------------------------------------------------------------------
 def generate_guide(route: dict) -> dict:
-    initial: GuideState = {"route": route, "summary": "", "guide": None, "error": None, "source": None}
+    initial: GuideState = {
+        "route": route,
+        "summary": "",
+        "guide": None,
+        "error": None,
+        "source": None,
+        "references": [],
+        "retrieve_error": None,
+    }
     try:
         if GUIDE_GRAPH is not None:
             final = GUIDE_GRAPH.invoke(initial)
