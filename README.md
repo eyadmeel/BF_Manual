@@ -5,25 +5,25 @@
 ```
 bf-manual/
 ├─ backend/
-│  ├─ run.py                     # 진입점 (python run.py)
+│  ├─ run.py                     # 진입점 
 │  ├─ requirements.txt
-│  ├─ .env.example               # OPENAI_API_KEY (복사해서 .env로)
+│  ├─ .env.example               # OPENAI_API_KEY 
 │  ├─ app/
 │  │  ├─ __init__.py             # create_app() 앱 팩토리 + 프론트 서빙
 │  │  ├─ api/
 │  │  │  └─ routes.py            # REST 엔드포인트 전부
-│  │  ├─ services/               # ★ 비즈니스 로직 (여기가 핵심)
+│  │  ├─ services/               # ★ 비즈니스 로직 
 │  │  │  ├─ mobility.py          # 이동 가능 여부 프로파일 정의
 │  │  │  ├─ graph_loader.py      # JSON 로딩 + 인접리스트 + 이벤트 적용
-│  │  │  ├─ pathfinder.py        # 다익스트라 안전 경로 탐색 (결정론적)
+│  │  │  ├─ pathfinder.py        # 다익스트라 안전 경로 탐색 
 │  │  │  ├─ guide_agent.py       # LangGraph/OpenAI 행동요령 + 폴백
 │  │  │  └─ help_message.py      # 도움 요청 미리보기 텍스트
-│  │  └─ data/                   # ★ 팀에서 제일 많이 손댈 파일
+│  │  └─ data/                   
 │  │     ├─ building.json        # 노드·엣지·시설 정보
 │  │     └─ hazard_scenarios.json# 시연용 화재 시나리오 + 이벤트
 │  └─ tests/
 │     └─ test_pathfinder.py      # 상태별 목적지 분기 검증
-├─ frontend/                     # HTML5/CSS3/JS (Flask가 같이 서빙)
+├─ frontend/                     # HTML5/CSS3/JS 
 │  ├─ index.html
 │  ├─ css/
 │  └─ js/
@@ -41,17 +41,6 @@ bf-manual/
   "AI가 틀리면?" 질문에 대한 구조적 답변이 됩니다.
 - **프론트엔드를 Flask가 서빙** — 별도 서버·CORS 설정 없이 `localhost:5000` 하나로 시연합니다.
 
-## 실행
-
-```bash
-cd backend
-python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env          # OPENAI_API_KEY 입력 (없어도 폴백으로 동작)
-python run.py                 # http://localhost:5000
-```
-
-키 없이도 전체 흐름이 동작합니다. AI 연동은 나중에 붙여도 됩니다.
 
 ## API
 
@@ -66,20 +55,3 @@ python run.py                 # http://localhost:5000
 | POST   | `/api/reroute`      | `{mobility, current_node, scenario, events[]}` → 재탐색 |
 | POST   | `/api/help-message` | `{route, note}` → 도움 요청 문구                        |
 | POST   | `/api/dev/reload`   | JSON 수정 후 캐시 비우기                                |
-
-## 검증된 시연 흐름 (demo-1, 302호 출발)
-
-```
-[자력이동]     302호 → 남측복도 → 서측연결복도 → 서측복도 → 대피공간 → A계단 → 1층 → 정문 비상구
-[휠체어]       302호 → 남측복도 → 서측연결복도 → 서측복도 → A계단 앞 방화구획 대피공간  (계단 미사용)
-[휠체어+ev-1]  302호 → 남측복도 → 중앙복도 → 서측복도 → 대피공간                      (우회 재탐색)
-```
-
-같은 위치·같은 화재에서 목적지가 갈리고, 이벤트 발생 시 경로가 바뀝니다.
-
-## 다음 작업
-
-1. `data/building.json`을 실제 평면도 기준으로 교체 (노드 30~50개)
-2. `frontend/index.html` — 화면 1~4 구현, `/api/building` SVG 렌더링
-3. `.env`에 키 넣고 `/api/guide` AI 응답 품질 확인
-4. AR 오버레이 화면 (카메라 + DeviceOrientation)

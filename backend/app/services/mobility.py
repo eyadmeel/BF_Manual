@@ -55,7 +55,7 @@ PROFILES = {
     ),
     "need_help": MobilityProfile(
         key="need_help",
-        label="도움이 필요함",
+        label="이동 불가",
         can_use_stairs=False,
         allow_step=False,
         min_width=0,

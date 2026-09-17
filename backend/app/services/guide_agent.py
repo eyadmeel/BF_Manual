@@ -80,7 +80,7 @@ SYSTEM_PROMPT = """당신은 BF Manual의 '화재 대피 행동요령 작성기'
   · '위험_변화'가 있으면: 그 내용을 쉬운 말로 한 문장씩 옮깁니다.
   · 입력에 '단차' 구간이 있으면: 해당 구간에서 천천히 이동하라고 안내합니다.
 - 대피자_상태에 맞춰 어조를 조정합니다.
-  · 휠체어 이용 / 도움이 필요함: 서두르기보다 안전하게 이동하고 주변에 도움을 요청하라고 안내합니다.
+  · 휠체어 이용 / 이동 불가: 서두르기보다 안전하게 이동하고 주변에 도움을 요청하라고 안내합니다.
   · 보행 보조기구 사용: 벽이나 난간을 짚으며 천천히 이동하라고 안내합니다.
 
 [출력 형식]
@@ -190,13 +190,19 @@ def validate(guide: dict, route: dict = None) -> bool:
         return False
     if not isinstance(guide["headline"], str) or not guide["headline"].strip():
         return False
-    steps, cautions = guide["steps"], guide["cautions"]
-    if not isinstance(steps, list) or not (1 <= len(steps) <= 6):
+    # steps, cautions = guide["steps"], guide["cautions"]
+    # if not isinstance(steps, list) or not (1 <= len(steps) <= 6):
+    #     return False
+    # if not isinstance(cautions, list):
+    #     return False
+    # if not all(isinstance(s, str) and s.strip() for s in steps + cautions):
+    #     return False
+    steps = [s for s in guide["steps"] if isinstance(s, str) and s.strip()] if isinstance(guide["steps"], list) else None
+    cautions = [c for c in guide["cautions"] if isinstance(c, str) and c.strip()] if isinstance(guide["cautions"], list) else None
+    if steps is None or cautions is None or not (1 <= len(steps) <= 6):
+        log.warning("형식 검증 실패: %s", json.dumps(guide, ensure_ascii=False)[:300])
         return False
-    if not isinstance(cautions, list):
-        return False
-    if not all(isinstance(s, str) and s.strip() for s in steps + cautions):
-        return False
+    guide["steps"], guide["cautions"] = steps, cautions
 
     blob = json.dumps(guide, ensure_ascii=False)
     if any(word in blob for word in FORBIDDEN):
@@ -291,7 +297,8 @@ def validate_node(state: GuideState) -> dict:
         return {"error": state["error"]}  # generate 단계 에러는 그대로 넘긴다
     if validate(state.get("guide"), state["route"]):
         return {"error": None}
-    log.warning("AI 응답 검증 실패 → 폴백")
+    # log.warning("AI 응답 검증 실패 → 폴백")
+    log.warning("AI 응답 검증 실패 → 폴백: %s", json.dumps(state.get("guide"), ensure_ascii=False)[:300])
     return {"error": "validate: AI 응답이 검증 규칙을 통과하지 못함"}
 
 

@@ -252,7 +252,7 @@
       >
         <div class="flex flex-col w-full">
           <header class="flex items-center justify-between mt-3 mb-4">
-            <div class="flex items-center space-x-2.5">
+            <div class="brand-home flex items-center space-x-2.5 cursor-pointer select-none" role="button" tabindex="0" aria-label="첫 화면으로">
               <img src="assets/logo.png" alt="BeFirst 로고" class="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(47,233,169,.45)]" />
               <span class="text-xl font-black tracking-tight text-white"
                 >BeFirst</span
@@ -329,7 +329,7 @@
             disabled
             class="w-full py-4 px-6 rounded-2xl bg-brand-neon active:scale-[.98] text-slate-950 font-black text-base tracking-wide flex items-center justify-center space-x-2 shadow-neon-glow transition-all disabled:opacity-40 disabled:shadow-none"
           >
-            <span>다음</span>
+            <span>대피 경로 분석</span>
             <svg
               class="w-5 h-5 stroke-current stroke-[2.5] fill-none"
               viewBox="0 0 24 24"
@@ -352,7 +352,7 @@
         <header
           class="pt-3 px-4 pb-2 flex items-center justify-between sticky top-0 z-30 bg-[#0B1520]/85 backdrop-blur-md border-b border-cyan-950/40"
         >
-          <div class="flex items-center space-x-2.5">
+          <div class="brand-home flex items-center space-x-2.5 cursor-pointer select-none" role="button" tabindex="0" aria-label="첫 화면으로">
             <img src="assets/logo.png" alt="BeFirst 로고" class="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(47,233,169,.45)]" />
             <span class="text-xl font-black tracking-tight text-white"
               >BeFirst</span
@@ -840,8 +840,9 @@
             <button
               id="btn-help-kakao"
               type="button"
-              class="py-3.5 rounded-xl bg-brand-neon text-slate-950 font-black text-sm active:scale-[.98]"
+              class="py-3.5 rounded-xl bg-[#FEE500] text-black/85 font-black text-sm active:scale-[.98] flex items-center justify-center gap-1.5"
             >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="#000000" aria-hidden="true"><path d="M12 3C6.48 3 2 6.54 2 10.9c0 2.8 1.86 5.27 4.66 6.67l-.95 3.48c-.08.3.26.54.52.37l4.15-2.74c.53.06 1.07.1 1.62.1 5.52 0 10-3.54 10-7.88S17.52 3 12 3z"/></svg>
               카카오톡 보내기
             </button>
           </div>

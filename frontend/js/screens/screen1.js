@@ -9,6 +9,7 @@
  */
 
 import * as api from '../api.js';
+import { ICON_PATHS } from '../icons.js';
 import {
   SCREEN,
   getState,
@@ -36,39 +37,19 @@ const DESTINATION_HINT = {
   refuge: '같은 층 대피공간으로 안내',
 };
 
-// 고정 아이콘 (서버 값이 아닌 상수 문자열). stroke + currentColor, 머리는 채움(fill).
-// 굵은 픽토그램 형태라 선 굵기를 요소마다 따로 지정한다.
-const ICON_PATHS = {
-  // 걷는 사람
-  independent:
-    '<circle cx="12.3" cy="4.2" r="1.9" fill="currentColor" stroke="none"/><path d="M12.4 8v5.6" stroke-width="3.4"/><path d="M11 8.2L8.4 10.2 7.2 13M13.7 8.3l.9 2.6 2.7 1.8M12.2 13.6l4.3 6.7 1.8-.6M10.8 15.6l-4.4 5 1.8.7" stroke-width="2.4"/>',
-  // 지팡이를 짚은 사람
-  walking_aid:
-    '<circle cx="12.4" cy="4.5" r="1.8" fill="currentColor" stroke="none"/><path d="M12.4 8.3v5.3" stroke-width="4.4"/><path d="M11.3 13.5v7.1M13.5 13.5v7.1" stroke-width="1.9"/><path d="M10.2 8.2L9.3 12.4M14.7 8.2l.6 5" stroke-width="1.8"/><path d="M8 12.6h1.5M8.9 13l-1.6 8.1" stroke-width="1"/>',
-  // 휠체어
-  wheelchair:
-    '<circle cx="10.2" cy="5" r="2" fill="currentColor" stroke="none"/><path d="M10 8.8v5.2" stroke-width="3.2"/><path d="M10.2 14.3h5l2.6 5.2 2.1-1.1" stroke-width="2.6"/><path d="M11 11.4h4.4" stroke-width="1.6"/><path d="M7.8 11.9A5 5 0 1 0 15.2 17.8" stroke-width="1.3"/>',
-  // 들어 올린 손 (도움 요청)
-  need_help:
-    '<path d="M8 12.5V6a1.5 1.5 0 013 0v5"/><path d="M11 10.5V4.5a1.5 1.5 0 013 0v6"/><path d="M14 10.5V6a1.5 1.5 0 013 0v7"/><path d="M8 11a1.5 1.5 0 00-3 0v3.5A6.5 6.5 0 0011.5 21h1a4.5 4.5 0 004.5-4.5V13"/><path d="M3.5 5.5L2 4M4 2.5L3.5 1"/>',
-  // 알 수 없는 key 용 기본 아이콘
-  fallback:
-    '<circle cx="12" cy="6" r="2.5"/><path d="M7 21v-6a5 5 0 0110 0v6"/>',
-};
 
-const CHECK_PATH = '<path d="M5 13l4 4L19 7"/>';
 
 const CARD_CLASS =
-  'mobility-card rounded-2xl p-4 flex flex-col justify-between items-start text-left min-h-[145px] ' +
+  'mobility-card rounded-2xl p-5 flex flex-col justify-between items-start text-left min-h-[210px] ' +
   'border active:scale-[.98] transition-all relative cursor-pointer select-none ' +
   'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-neon';
 const CARD_OFF = ['glass-card', 'border-slate-700/60'];
-const CARD_ON = ['glass-card-active', 'border-2', 'border-brand-neon'];
+const CARD_ON = ['glass-card-active', 'border-2', 'border-brand-neon', 'shadow-neon-glow'];
 
 const ICON_WRAP_OFF =
-  'icon-wrap w-14 h-14 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-300';
+  'icon-wrap w-24 h-24 rounded-2xl bg-slate-800/80 flex items-center justify-center text-slate-300';
 const ICON_WRAP_ON =
-  'icon-wrap w-14 h-14 rounded-xl bg-emerald-500/20 border border-brand-neon/40 flex items-center justify-center text-brand-neon';
+  'icon-wrap w-24 h-24 rounded-2xl bg-emerald-500/20 flex items-center justify-center text-brand-neon';
 
 /* ───────── DOM 생성 도우미 ───────── */
 
@@ -95,29 +76,28 @@ function createCard(profile) {
   card.dataset.key = profile.key;
 
   const top = document.createElement('div');
-  top.className = 'w-full flex items-center justify-between mb-2';
+  top.className = 'w-full flex items-center justify-center mb-3'; // 픽토그램 가운데 정렬
 
   const iconWrap = document.createElement('div');
   iconWrap.className = ICON_WRAP_OFF;
   iconWrap.append(
-    createIcon(ICON_PATHS[profile.key] || ICON_PATHS.fallback, 'w-6 h-6', '2'),
+    createIcon(ICON_PATHS[profile.key] || ICON_PATHS.fallback, 'w-20 h-20', '2'),
   );
 
-  const check = document.createElement('div');
-  check.className =
-    'check-icon hidden w-5 h-5 rounded-full bg-brand-neon text-slate-950 items-center justify-center';
-  check.append(createIcon(CHECK_PATH, 'w-3 h-3', '3'));
-
-  top.append(iconWrap, check);
+  // 선택 표시는 체크 아이콘 없이 카드 테두리 빛남(CARD_ON)으로만 한다
+  top.append(iconWrap);
 
   const body = document.createElement('div');
   const title = document.createElement('h2');
-  title.className = 'text-sm font-bold text-slate-100';
+  title.className = 'text-base font-bold text-slate-100 break-keep';
   title.textContent = profile.label || profile.key;
   const hint = document.createElement('p');
-  hint.className = 'text-[11px] text-slate-400 mt-1 leading-snug';
+  hint.className = 'text-xs text-slate-400 mt-1 leading-snug break-keep';
+  // 이동 불가는 이동하지 않고 제자리에서 구조를 기다리므로 문구를 따로 둔다
   hint.textContent =
-    DESTINATION_HINT[profile.destination_type] || '안내 목적지 정보 없음';
+    profile.key === 'need_help'
+      ? '현재 위치에서 구조 대기 안내'
+      : DESTINATION_HINT[profile.destination_type] || '안내 목적지 정보 없음';
   body.append(title, hint);
 
   card.append(top, body);
@@ -185,9 +165,6 @@ function syncSelection(s) {
     card.classList.remove(...(on ? CARD_OFF : CARD_ON));
     card.classList.add(...(on ? CARD_ON : CARD_OFF));
 
-    const check = card.querySelector('.check-icon');
-    check.classList.toggle('hidden', !on);
-    check.classList.toggle('flex', on);
     card.querySelector('.icon-wrap').className = on
       ? ICON_WRAP_ON
       : ICON_WRAP_OFF;

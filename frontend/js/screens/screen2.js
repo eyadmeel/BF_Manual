@@ -12,6 +12,7 @@
  *   - 도움 요청은 미리보기 후 기기의 문자 앱으로 전달할 수 있다.
  */
 
+import { ICON_PATHS } from '../icons.js';
 import {
   postRoute,
   postGuide,
@@ -105,21 +106,45 @@ async function initKakao() {
 
 initKakao();
 
-// screen1 과 같은 이동 상태 아이콘 (고정 상수, stroke + currentColor)
-const ICON_PATHS = {
-  independent:
-    '<circle cx="13.5" cy="4.5" r="2"/><path d="M6 18l3-3 2 1.5 3-4-2.5-3.5 3-2"/><path d="M10 21l2-4.5-1.5-2"/><path d="M5 12l3-1.5"/>',
-  walking_aid:
-    '<path d="M16 4a2 2 0 00-4 0v16"/><path d="M8 8a2 2 0 014 0"/><circle cx="6.5" cy="5.5" r="1.5"/><path d="M5 20l2.5-9L11 12"/>',
-  wheelchair:
-    '<circle cx="12" cy="4" r="2"/><path d="M12 6v6h4"/><path d="M8 12a4 4 0 104 4"/><path d="M15 19l4 2"/>',
-  need_help:
-    '<path d="M8 12.5V6a1.5 1.5 0 013 0v5"/><path d="M11 10.5V4.5a1.5 1.5 0 013 0v6"/><path d="M14 10.5V6a1.5 1.5 0 013 0v7"/><path d="M8 11a1.5 1.5 0 00-3 0v3.5A6.5 6.5 0 0011.5 21h1a4.5 4.5 0 004.5-4.5V13"/><path d="M3.5 5.5L2 4M4 2.5L3.5 1"/>',
-  fallback:
-    '<circle cx="12" cy="6" r="2.5"/><path d="M7 21v-6a5 5 0 0110 0v6"/>',
-};
+// 상단 로고·앱 이름을 누르면 첫 화면(이동 상태 선택)으로 이동
+document.querySelectorAll('.brand-home').forEach((el) => {
+  el.addEventListener('click', () => goScreen(SCREEN.MOBILITY));
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      goScreen(SCREEN.MOBILITY);
+    }
+  });
+});
+
 const WARNING_PATH =
   '<path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>';
+
+/**
+ * 이동 불가(need_help) 사용자 전용 행동요령.
+ * 스스로 이동할 수 없으므로 경로·AR 대신 '제자리 안전 확보 + 구조 요청' 행동을 안내한다.
+ * 경로·방향을 새로 만들지 않는 고정 문구다. (원칙 1, 4, 5)
+ */
+const IMMOBILE_KEY = 'need_help';
+const IMMOBILE_GUIDE = {
+  headline: '움직이지 말고 지금 있는 곳에서 안전을 확보하세요',
+  steps: [
+    '119에 전화해 건물 이름, 층, 방 번호와 "스스로 이동할 수 없다"는 사실을 알리세요.',
+    '방문을 닫아 연기가 들어오지 않게 하세요. 가능하면 젖은 수건이나 옷으로 문틈을 막으세요.',
+    '창문이 있으면 창가 쪽으로 몸을 두고, 연기가 들어오지 않을 때만 조금 열어 위치를 알리세요.',
+    '연기가 차면 자세를 최대한 낮추고 젖은 천으로 코와 입을 막으세요.',
+    '휴대폰 손전등, 소리, 옷을 흔들어 구조대에게 위치를 계속 알리세요.',
+    '주변에 사람이 있으면 큰 소리로 도움을 요청하고, 아래 "도움 요청 내용 보기"로 위치 정보를 전달하세요.',
+  ],
+  cautions: [
+    '무리해서 혼자 이동하지 마세요. 구조대가 올 때까지 위치를 알리는 것이 가장 중요합니다.',
+    '화재 시 엘리베이터를 사용하지 마세요.',
+  ],
+};
+
+function isImmobile(s = getState()) {
+  return (s.mobility || s.route?.mobility) === IMMOBILE_KEY;
+}
 
 const DEST_KIND_BASE =
   'text-[10px] font-medium px-2 py-0.5 rounded border flex-shrink-0 ml-2 ';
@@ -228,7 +253,7 @@ function drawPlan(s, changed) {
     image: s.building.floor_images?.[String(s.floor)] ?? null,
   });
   renderHazard({ blockedIds: blockedNodeIds(), smokeIds: smokeNodeIds() });
-  if (hasRoute()) renderPath(pathRunOnFloor(s.route.path, s.floor));
+  if (hasRoute() && !isImmobile(s)) renderPath(pathRunOnFloor(s.route.path, s.floor));
   else clearPath();
   markStart(s.route?.start?.id ?? s.startNodeId);
 
@@ -240,7 +265,7 @@ function drawPlan(s, changed) {
 
 /** 현재 경로(없으면 현재 위치) 주변으로 확대한다 */
 function zoomToCurrent(s) {
-  const onFloor = hasRoute() ? pathRunOnFloor(s.route.path, s.floor) : [];
+  const onFloor = hasRoute() && !isImmobile(s) ? pathRunOnFloor(s.route.path, s.floor) : [];
   if (onFloor.length >= 2) {
     zoomToNodes(onFloor, { padding: 7, minWidth: 45 });
     return;
@@ -273,6 +298,16 @@ function syncSummary(s) {
       ),
     );
     show('notice');
+  } else if (s.route && isImmobile(s)) {
+    // 이동 불가: 목적지·거리 대신 '현재 위치에서 구조 대기'
+    const route = s.route;
+    destName.textContent = '현재 위치에서 구조 대기';
+    destKind.textContent = '이동 불가';
+    destKind.className = DEST_KIND_BASE + DEST_KIND_REFUGE;
+    statDist.textContent = '0';
+    statEta.textContent = '—';
+    statStart.textContent = route.start?.name || '—';
+    show('body');
   } else if (hasRoute()) {
     const route = s.route;
     destName.textContent = `${route.destination.floor}층 ${route.destination.name}`;
@@ -345,6 +380,8 @@ function syncSummary(s) {
 
 function syncActionButtons(s) {
   startArBtn.disabled = !hasRoute();
+  // 이동 불가는 AR 대피 안내를 하지 않는다
+  startArBtn.style.display = isImmobile(s) ? 'none' : '';
   helpBtn.disabled = !s.route || isLoading('help'); // no_route 에서도 도움 요청은 가능해야 한다
   floorplanEl.setAttribute('aria-busy', String(isLoading('route')));
 }
@@ -352,6 +389,11 @@ function syncActionButtons(s) {
 function syncGuide(s) {
   if (!s.route) {
     guideCard.classList.add('hidden');
+    return;
+  }
+
+  if (isImmobile(s)) {
+    renderGuide({ ...IMMOBILE_GUIDE, source: 'immobile' });
     return;
   }
 
@@ -368,11 +410,16 @@ function syncGuide(s) {
     return;
   }
 
-  const guide = s.guide;
+  renderGuide(s.guide);
+}
+
+/** 행동요령 카드를 그린다 */
+function renderGuide(guide) {
   guideHeadline.textContent = guide.headline || '';
 
   guideSource.classList.remove('hidden');
-  guideSource.textContent = guide.source === 'ai' ? 'AI 생성' : '기본 안내';
+  guideSource.textContent =
+    guide.source === 'ai' ? 'AI 생성' : guide.source === 'immobile' ? '이동 불가 안내' : '기본 안내';
   guideSource.className =
     SOURCE_BASE + (guide.source === 'ai' ? SOURCE_AI : SOURCE_FALLBACK);
 
@@ -435,8 +482,8 @@ function syncEventButton() {
 
 subscribe(['screen'], syncScreen);
 subscribe(['building', 'floor', 'route', 'startNodeId'], drawPlan);
-subscribe(['building', 'route', 'loading'], syncSummary);
-subscribe(['route', 'guide', 'loading'], syncGuide);
+subscribe(['building', 'route', 'loading', 'mobility'], syncSummary);
+subscribe(['route', 'guide', 'loading', 'mobility'], syncGuide);
 subscribe(['mobility', 'profiles', 'route'], syncBadge);
 subscribe(['route'], syncHazardChip);
 subscribe(
@@ -487,6 +534,7 @@ async function handleSelectRoom(nodeId) {
 }
 
 async function loadGuide(route) {
+  if (isImmobile()) return; // 이동 불가는 고정 행동요령을 쓴다
   setLoading('guide', true);
   try {
     const guide = await postGuide(route);
