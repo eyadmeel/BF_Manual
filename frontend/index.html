@@ -56,7 +56,7 @@
           #070b11 55%,
           #04070a 100%
         );
-        transition: opacity 0.4s ease;
+        transition: opacity 0.3s ease;
       }
 
       #splash-screen.splash-fadeout {
@@ -252,8 +252,17 @@
       >
         <div class="flex flex-col w-full">
           <header class="flex items-center justify-between mt-3 mb-4">
-            <div class="brand-home flex items-center space-x-2.5 cursor-pointer select-none" role="button" tabindex="0" aria-label="첫 화면으로">
-              <img src="assets/logo.png" alt="BeFirst 로고" class="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(47,233,169,.45)]" />
+            <div
+              class="brand-home flex items-center space-x-2.5 cursor-pointer select-none"
+              role="button"
+              tabindex="0"
+              aria-label="첫 화면으로"
+            >
+              <img
+                src="assets/logo.png"
+                alt="BeFirst 로고"
+                class="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(47,233,169,.45)]"
+              />
               <span class="text-xl font-black tracking-tight text-white"
                 >BeFirst</span
               >
@@ -352,8 +361,17 @@
         <header
           class="pt-3 px-4 pb-2 flex items-center justify-between sticky top-0 z-30 bg-[#0B1520]/85 backdrop-blur-md border-b border-cyan-950/40"
         >
-          <div class="brand-home flex items-center space-x-2.5 cursor-pointer select-none" role="button" tabindex="0" aria-label="첫 화면으로">
-            <img src="assets/logo.png" alt="BeFirst 로고" class="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(47,233,169,.45)]" />
+          <div
+            class="brand-home flex items-center space-x-2.5 cursor-pointer select-none"
+            role="button"
+            tabindex="0"
+            aria-label="첫 화면으로"
+          >
+            <img
+              src="assets/logo.png"
+              alt="BeFirst 로고"
+              class="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(47,233,169,.45)]"
+            />
             <span class="text-xl font-black tracking-tight text-white"
               >BeFirst</span
             >
@@ -555,8 +573,14 @@
             </div>
 
             <div
-              class="relative z-10 px-3 py-2 bg-slate-950/75 backdrop-blur-sm border-t border-cyan-900/40 flex items-center justify-between text-[10px]"
+              class="relative z-10 px-3 py-2 bg-slate-950/75 backdrop-blur-sm border-t border-cyan-900/40 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px]"
             >
+              <div class="flex items-center space-x-1.5">
+                <span
+                  class="w-2.5 h-2.5 rounded-full bg-red-500 border border-red-200"
+                ></span
+                ><span class="text-slate-300">화재</span>
+              </div>
               <div class="flex items-center space-x-1.5">
                 <span class="w-3 h-1 bg-emerald-400 rounded-full"></span
                 ><span class="text-slate-300">대피 동선</span>
@@ -818,7 +842,14 @@
           <div class="w-10 h-1 bg-slate-600 rounded-full mx-auto mb-4"></div>
           <div class="flex items-center justify-between gap-3 mb-1">
             <h2 class="text-lg font-extrabold text-white">도움 요청 내용</h2>
-            <button id="btn-help-close" type="button" aria-label="닫기" class="w-9 h-9 rounded-full border border-slate-600 bg-slate-900 text-slate-300 text-xl leading-none active:scale-[.98]">×</button>
+            <button
+              id="btn-help-close"
+              type="button"
+              aria-label="닫기"
+              class="w-9 h-9 rounded-full border border-slate-600 bg-slate-900 text-slate-300 text-xl leading-none active:scale-[.98]"
+            >
+              ×
+            </button>
           </div>
           <p class="text-[11px] text-slate-400 mb-3">
             아래 내용을 보호자 또는 관리자에게 전달할 수 있습니다.
@@ -842,7 +873,16 @@
               type="button"
               class="py-3.5 rounded-xl bg-[#FEE500] text-black/85 font-black text-sm active:scale-[.98] flex items-center justify-center gap-1.5"
             >
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="#000000" aria-hidden="true"><path d="M12 3C6.48 3 2 6.54 2 10.9c0 2.8 1.86 5.27 4.66 6.67l-.95 3.48c-.08.3.26.54.52.37l4.15-2.74c.53.06 1.07.1 1.62.1 5.52 0 10-3.54 10-7.88S17.52 3 12 3z"/></svg>
+              <svg
+                class="w-4 h-4"
+                viewBox="0 0 24 24"
+                fill="#000000"
+                aria-hidden="true"
+              >
+                <path
+                  d="M12 3C6.48 3 2 6.54 2 10.9c0 2.8 1.86 5.27 4.66 6.67l-.95 3.48c-.08.3.26.54.52.37l4.15-2.74c.53.06 1.07.1 1.62.1 5.52 0 10-3.54 10-7.88S17.52 3 12 3z"
+                />
+              </svg>
               카카오톡 보내기
             </button>
           </div>

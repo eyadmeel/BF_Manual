@@ -9,7 +9,7 @@
  *       #layer-edges  복도 연결선
  *       #layer-path   대피 경로 (노드 아래에 깔림)
  *       #layer-nodes  노드 도형 + 이름 + 현재지점 표시
- *       #layer-hazard 차단 / 연기 표시
+ *       #layer-hazard 화재 / 차단 / 연기 표시
  *
  * 좌표: 노드 x,y 는 0~100.
  *   - 이미지 없음: viewBox "0 0 100 100", 좌표 그대로 사용.
@@ -30,6 +30,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // 범례(index.html 하단)와 맞춘 색
 const COLORS = {
   path: '#34d399',        // emerald-400 대피 동선
+  fire: '#ef4444',        // red-500 화재 발생 지점
   blocked: '#f43f5e',     // rose-500 차단 구역
   smoke: '#f59e0b',       // amber-500 연기
   start: '#22d3ee',       // cyan-400 현재지점
@@ -454,8 +455,8 @@ export function clearPath() {
   lastPathPoints = null;
 }
 
-/** 차단·연기 표시. 같은 노드가 둘 다면 차단이 우선한다. 현재 층에 그려진 노드만 표시된다. */
-export function renderHazard({ blockedIds = [], smokeIds = [] } = {}) {
+/** 화재·차단·연기 표시. 같은 노드가 둘 다면 차단이 우선한다. 현재 층에 그려진 노드만 표시된다. */
+export function renderHazard({ fireId = null, blockedIds = [], smokeIds = [] } = {}) {
   const hazardLayer = getLayer('layer-hazard');
   hazardLayer.replaceChildren();
 
@@ -487,6 +488,37 @@ export function renderHazard({ blockedIds = [], smokeIds = [] } = {}) {
       fill: 'rgba(245, 158, 11, .16)', stroke: COLORS.smoke,
       'stroke-width': 0.6, 'stroke-dasharray': '1 1.5',
     }, group);
+  }
+
+  // 화재 발생 지점은 차단 표시 위에도 보이도록 마지막에 그린다.
+  const fire = positions.get(fireId);
+  if (fire) {
+    const group = createSvg('g', {
+      'data-hazard': 'fire',
+      'pointer-events': 'none',
+      role: 'img',
+      'aria-label': '화재 발생 지점',
+    }, hazardLayer);
+    createSvg('circle', {
+      cx: fire.x, cy: fire.y, r: imageMode ? 4.4 : 7,
+      fill: 'rgba(239, 68, 68, .18)', stroke: COLORS.fire,
+      'stroke-width': imageMode ? 0.7 : 1.1,
+    }, group);
+    createSvg('circle', {
+      cx: fire.x, cy: fire.y, r: imageMode ? 2.2 : 3.4,
+      fill: COLORS.fire, stroke: '#fee2e2',
+      'stroke-width': imageMode ? 0.45 : 0.7,
+    }, group);
+    createText(group, '!', {
+      x: fire.x, y: fire.y + (imageMode ? 0.1 : 0.2),
+      'font-size': imageMode ? 2.6 : 4.2,
+      'font-weight': '900', fill: '#ffffff',
+    });
+    createText(group, '화재', {
+      x: fire.x, y: Math.max(2.8, fire.y - (imageMode ? 6.2 : 9.5)),
+      'font-size': imageMode ? 2.7 : 3.2,
+      'font-weight': '900', fill: '#fca5a5', ...LABEL_HALO,
+    });
   }
 }
 

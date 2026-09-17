@@ -42,11 +42,13 @@ import {
   setGuide,
   setHelpText,
   setLoading,
+  setFloor,
   isLoading,
   setError,
   selectStartNode,
   triggerEvent,
   nextPendingEvent,
+  currentScenario,
   nodesOnFloor,
   edgesOnFloor,
   nodeById,
@@ -235,7 +237,39 @@ function syncScreen(s) {
       resetZoom();
     },
   });
+
   drawPlan(s, []);
+  focusFireBeforeSelection(s);
+}
+
+function scenarioOf(s) {
+  return (s.scenarios || []).find((scenario) => scenario.key === s.scenarioKey) || null;
+}
+
+function fireOriginNode(s) {
+  return nodeById(scenarioOf(s)?.origin_node);
+}
+
+/** 화면 데이터가 늦게 도착해도 경로 선택 전에는 화재 위치부터 보여준다. */
+function focusFireBeforeSelection(s) {
+  if (s.screen !== SCREEN.PLAN || s.route || isLoading('route')) return;
+  const fireNode = fireOriginNode(s);
+  if (!fireNode) return;
+  if (Number(s.floor) !== Number(fireNode.floor)) {
+    setFloor(fireNode.floor);
+    return;
+  }
+  zoomToNodes([fireNode], { padding: 13, minWidth: 48 });
+}
+
+function visibleHazard(s) {
+  const scenario = scenarioOf(s);
+  const hazard = s.route?.hazard;
+  return {
+    fireId: scenario?.origin_node || null,
+    blockedIds: hazard?.blocked_nodes || scenario?.blocked_nodes || [],
+    smokeIds: hazard?.smoke_nodes || scenario?.smoke_nodes || [],
+  };
 }
 
 /** 평면도: floorplan.js 가 요구하는 순서(층 → 위험 → 경로 → 현재지점)로 그린다. */
@@ -252,7 +286,7 @@ function drawPlan(s, changed) {
     // building.json 의 floor_images 에 이미지가 있으면 그 위에 경로를 그린다
     image: s.building.floor_images?.[String(s.floor)] ?? null,
   });
-  renderHazard({ blockedIds: blockedNodeIds(), smokeIds: smokeNodeIds() });
+  renderHazard(visibleHazard(s));
   if (hasRoute() && !isImmobile(s)) renderPath(pathRunOnFloor(s.route.path, s.floor));
   else clearPath();
   markStart(s.route?.start?.id ?? s.startNodeId);
@@ -372,6 +406,16 @@ function syncSummary(s) {
     );
     show('notice');
   } else {
+    const scenario = currentScenario();
+    const title = summaryEmpty.querySelector('p:first-child');
+    const detail = summaryEmpty.querySelector('p:last-child');
+    if (scenario?.origin_node) {
+      title.textContent = `화재 발생: ${scenario.name}`;
+      detail.textContent = '붉은 화재 지점을 확인한 뒤 평면도에서 현재 위치를 선택하세요.';
+    } else {
+      title.textContent = '평면도에서 현재 위치를 선택하세요';
+      detail.textContent = '평면도에서 방을 탭하면 대피 경로가 계산됩니다.';
+    }
     show('empty');
   }
   notice.removeAttribute('role');
@@ -468,9 +512,14 @@ function syncBadge(s) {
 function syncHazardChip(s) {
   const text = hazardChip.lastElementChild;
   if (!text) return;
-  text.textContent = s.route?.hazard
-    ? `차단 ${blockedNodeIds().length} · 연기 ${smokeNodeIds().length}`
-    : '위치 선택 후 위험 정보 표시';
+  const scenario = scenarioOf(s);
+  if (s.route?.hazard) {
+    text.textContent = `차단 ${blockedNodeIds().length} · 연기 ${smokeNodeIds().length}`;
+  } else if (scenario?.origin) {
+    text.textContent = `화재 · ${scenario.origin}`;
+  } else {
+    text.textContent = '화재 위치 정보 없음';
+  }
 }
 
 function syncEventButton() {
@@ -481,11 +530,12 @@ function syncEventButton() {
 }
 
 subscribe(['screen'], syncScreen);
-subscribe(['building', 'floor', 'route', 'startNodeId'], drawPlan);
-subscribe(['building', 'route', 'loading', 'mobility'], syncSummary);
+subscribe(['building', 'floor', 'route', 'startNodeId', 'scenarios', 'scenarioKey'], drawPlan);
+subscribe(['building', 'route', 'loading', 'mobility', 'scenarios', 'scenarioKey'], syncSummary);
 subscribe(['route', 'guide', 'loading', 'mobility'], syncGuide);
 subscribe(['mobility', 'profiles', 'route'], syncBadge);
-subscribe(['route'], syncHazardChip);
+subscribe(['route', 'scenarios', 'scenarioKey'], syncHazardChip);
+subscribe(['screen', 'building', 'scenarios', 'scenarioKey', 'floor'], focusFireBeforeSelection);
 subscribe(
   ['scenarios', 'scenarioKey', 'triggeredEvents', 'loading'],
   syncEventButton,

@@ -45,12 +45,23 @@ def mobility():
 @bp.get("/scenarios")
 def scenarios():
     data = gl.get_scenarios()
+    known_nodes = gl.node_index()
+
+    def origin_node_id(scenario):
+        """사람용 origin 문구의 첫 토큰이 실제 노드 ID이면 함께 반환한다."""
+        origin = str(scenario.get("origin") or "").strip()
+        candidate = origin.split(maxsplit=1)[0] if origin else ""
+        return candidate if candidate in known_nodes else None
+
     return jsonify(
         [
             {
                 "key": k,
                 "name": v["name"],
                 "origin": v.get("origin"),
+                "origin_node": origin_node_id(v),
+                "blocked_nodes": list(v.get("blocked_nodes", [])),
+                "smoke_nodes": list(v.get("smoke_nodes", [])),
                 "events": [{"id": e["id"], "label": e["label"]} for e in v.get("events", [])],
             }
             for k, v in data.items()
