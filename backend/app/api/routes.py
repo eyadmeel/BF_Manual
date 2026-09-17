@@ -17,14 +17,19 @@ def health():
     return jsonify({"status": "ok"})
 
 
+# @bp.get("/config")
+# def config():
+#     """프론트엔드에서 사용할 공개 설정값만 반환한다."""
+#     return jsonify({
+#         "kakao_javascript_key": os.getenv("KAKAO_JS_KEY")
+#         or os.getenv("KAKAO_JAVA_SCRIPT", "")
+#     })
+
 @bp.get("/config")
 def config():
-    """프론트엔드에서 사용할 공개 설정값만 반환한다."""
     return jsonify({
-        "kakao_javascript_key": os.getenv("KAKAO_JS_KEY")
-        or os.getenv("KAKAO_JAVA_SCRIPT", "")
+        "kakao_javascript_key": os.getenv("KAKAO_JS_KEY", "")
     })
-
 
 @bp.get("/building")
 def building():
