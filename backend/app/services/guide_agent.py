@@ -1,17 +1,45 @@
-"""대피 행동요령 생성 Agent.
+"""대피 행동요령 생성 Agent (LangGraph StateGraph).
 
 설계 원칙 (기획서 8-3 준수):
   AI는 경로나 화재 위치를 판단하지 않는다.
   이미 계산된 경로 + 시설 정보를 '사람이 읽을 문장'으로 바꾸기만 한다.
+  그래프 안에서 경로를 다시 계산하지 않는다 (pathfinder 를 호출하지 않는다).
 
-흐름: summarize -> generate(OpenAI) -> validate -> fallback
-OPENAI_API_KEY가 없거나 호출이 실패하면 즉시 템플릿 폴백으로 내려간다.
+흐름 (그래프가 제어한다):
+
+    START
+      │ route_entry: OPENAI_API_KEY 없음 또는 route.status != "ok"
+      ├──────────────────────────────────────────────┐
+      ▼                                              │
+    summarize   경로 결과 → LLM 입력 요약             │
+      │  (추후) retrieve: 매뉴얼 검색(RAG) 자리        │
+      ▼                                              │
+    generate    OpenAI 호출. 예외는 state.error 에 기록 │
+      ▼                                              │
+    validate    형식·금지 표현·노드ID·목적지 분기 검사   │
+      │ route_after_validate                          │
+      ├── 통과 ──▶ finalize  source="ai", 주의문구 추가 │
+      └── 실패/에러 ─▶ fallback ◀─────────────────────┘
+                        기존 템플릿 안내
+    finalize / fallback ──▶ END
+
+langgraph 를 import 할 수 없으면 같은 노드 함수를 같은 순서로 순차 실행한다.
+어떤 경우에도 generate_guide 는 예외를 던지지 않고 안내문(최소한 폴백)을 반환한다.
 """
 
 import json
 import logging
 import os
 import re
+from typing import Optional, TypedDict
+
+try:
+    from langgraph.graph import END, START, StateGraph
+
+    _LANGGRAPH_AVAILABLE = True
+except Exception:  # noqa: BLE001 - 라이브러리가 없거나 깨져도 서비스는 살아 있어야 한다
+    END = START = StateGraph = None
+    _LANGGRAPH_AVAILABLE = False
 
 log = logging.getLogger(__name__)
 
@@ -137,8 +165,9 @@ def _call_openai(summary: str) -> dict:
     llm = ChatOpenAI(
         model=MODEL,
         temperature=0.2,
-        timeout=8,
-        max_retries=1,
+        # 프론트(api.js) 요청 제한이 8초이므로, 재시도 없이 5초 안에 끝내고 폴백으로 넘긴다
+        timeout=5,
+        max_retries=0,
         model_kwargs={"response_format": {"type": "json_object"}},
     )
     resp = llm.invoke(
@@ -195,7 +224,7 @@ def fallback(route: dict) -> dict:
                 "젖은 천으로 문틈을 막아 연기 유입을 차단하세요.",
                 "119에 위치를 알리고 구조를 기다리세요.",
             ],
-            "cautions": [route.get("reason", "")],
+            "cautions": [route["reason"]] if route.get("reason") else [],
             "source": "fallback",
             "disclaimer": DISCLAIMER,
         }
@@ -227,23 +256,153 @@ def fallback(route: dict) -> dict:
 
 
 # --------------------------------------------------------------------------
-# 공개 함수
+# 그래프 상태
+# --------------------------------------------------------------------------
+class GuideState(TypedDict, total=False):
+    route: dict              # pathfinder 결과 (읽기 전용)
+    summary: str             # summarize 노드 결과
+    guide: Optional[dict]    # generate 결과 → finalize/fallback 에서 최종 안내문
+    error: Optional[str]     # generate 예외 또는 validate 실패 사유
+    source: Optional[str]    # "ai" | "fallback"
+
+
+ELEVATOR_CAUTION = "화재 시 엘리베이터를 사용하지 마세요."
+
+
+# --------------------------------------------------------------------------
+# 노드 — 위의 summarize / _call_openai / validate / fallback 을 감싸기만 한다
+# 노드는 state 를 직접 바꾸지 않고 바뀐 키만 dict 로 돌려준다.
+# --------------------------------------------------------------------------
+def summarize_node(state: GuideState) -> dict:
+    return {"summary": summarize(state["route"])}
+
+
+def generate_node(state: GuideState) -> dict:
+    try:
+        # 모듈 전역 _call_openai 를 호출 시점에 찾는다 (테스트에서 교체 가능)
+        return {"guide": _call_openai(state["summary"]), "error": None}
+    except Exception as exc:  # noqa: BLE001 - 예외는 밖으로 던지지 않고 기록 후 fallback 으로 보낸다
+        log.warning("AI 호출 실패(%s) → 폴백", exc)
+        return {"guide": None, "error": f"generate: {type(exc).__name__}: {exc}"}
+
+
+def validate_node(state: GuideState) -> dict:
+    if state.get("error"):
+        return {"error": state["error"]}  # generate 단계 에러는 그대로 넘긴다
+    if validate(state.get("guide"), state["route"]):
+        return {"error": None}
+    log.warning("AI 응답 검증 실패 → 폴백")
+    return {"error": "validate: AI 응답이 검증 규칙을 통과하지 못함"}
+
+
+def finalize_node(state: GuideState) -> dict:
+    guide = dict(state["guide"])
+    guide["source"] = "ai"
+    guide["disclaimer"] = DISCLAIMER
+    guide["cautions"] = list(guide.get("cautions", [])) + [ELEVATOR_CAUTION]
+    return {"guide": guide, "source": "ai"}
+
+
+def fallback_node(state: GuideState) -> dict:
+    return {"guide": fallback(state["route"]), "source": "fallback"}
+
+
+# --------------------------------------------------------------------------
+# 라우터 (조건부 엣지)
+# --------------------------------------------------------------------------
+def route_entry(state: GuideState) -> str:
+    """시작 분기: AI 를 쓸 수 없거나 경로가 없으면 곧바로 fallback."""
+    if not os.getenv("OPENAI_API_KEY"):
+        return "fallback"
+    if state["route"].get("status") != "ok":
+        return "fallback"
+    return AI_PIPELINE[0][0]
+
+
+def route_after_validate(state: GuideState) -> str:
+    return "fallback" if state.get("error") else "finalize"
+
+
+# AI 안내문을 만드는 직선 구간. 위에서부터 순서대로 연결되고, 마지막 노드 뒤에서
+# route_after_validate 로 finalize / fallback 이 갈린다 (마지막은 validate 여야 한다).
+# 노드를 추가할 때는 이 목록에 (이름, 함수) 한 줄만 끼워 넣으면 된다.
+AI_PIPELINE = [
+    ("summarize", summarize_node),
+    # ("retrieve", retrieve_node),  # 추후 RAG(매뉴얼 검색) 노드 자리: summarize → retrieve → generate
+    #   retrieve 는 매뉴얼 문단을 state 에 더할 뿐, 경로·목적지를 바꾸지 않는다.
+    ("generate", generate_node),
+    ("validate", validate_node),
+]
+
+
+def _build_graph():
+    builder = StateGraph(GuideState)
+
+    for name, node in AI_PIPELINE:
+        builder.add_node(name, node)
+    builder.add_node("finalize", finalize_node)
+    builder.add_node("fallback", fallback_node)
+
+    first = AI_PIPELINE[0][0]
+    last = AI_PIPELINE[-1][0]
+
+    builder.add_conditional_edges(START, route_entry, {first: first, "fallback": "fallback"})
+    for (current, _), (following, _) in zip(AI_PIPELINE, AI_PIPELINE[1:]):
+        builder.add_edge(current, following)
+    builder.add_conditional_edges(
+        last, route_after_validate, {"finalize": "finalize", "fallback": "fallback"}
+    )
+    builder.add_edge("finalize", END)
+    builder.add_edge("fallback", END)
+    return builder.compile()
+
+
+# 모듈 로드 시 한 번만 compile 해서 재사용한다
+GUIDE_GRAPH = None
+if _LANGGRAPH_AVAILABLE:
+    try:
+        GUIDE_GRAPH = _build_graph()
+    except Exception:  # noqa: BLE001
+        log.exception("LangGraph 그래프 구성 실패 → 순차 실행으로 동작")
+        GUIDE_GRAPH = None
+
+
+def _run_sequential(state: GuideState) -> GuideState:
+    """langgraph 가 없을 때: 그래프와 같은 노드·같은 분기를 순서대로 실행한다."""
+    state = dict(state)
+    if route_entry(state) == "fallback":
+        state.update(fallback_node(state))
+        return state
+    for _, node in AI_PIPELINE:
+        state.update(node(state))
+    final_node = finalize_node if route_after_validate(state) == "finalize" else fallback_node
+    state.update(final_node(state))
+    return state
+
+
+def _safe_fallback(route) -> dict:
+    """마지막 안전장치. route 가 깨져 있어도 기존 폴백 문구로 안내한다."""
+    try:
+        return fallback(route)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("폴백 생성 실패(%s) → 경로 없음 안내로 대체", exc)
+        return fallback({"status": "no_route", "reason": ""})
+
+
+# --------------------------------------------------------------------------
+# 공개 함수 (시그니처·반환 형태 유지)
 # --------------------------------------------------------------------------
 def generate_guide(route: dict) -> dict:
-    if not os.getenv("OPENAI_API_KEY"):
-        return fallback(route)
-    if route["status"] != "ok":
-        return fallback(route)
-
+    initial: GuideState = {"route": route, "summary": "", "guide": None, "error": None, "source": None}
     try:
-        guide = _call_openai(summarize(route))
-        if validate(guide, route):
-            guide["source"] = "ai"
-            guide["disclaimer"] = DISCLAIMER
-            guide.setdefault("cautions", []).append("화재 시 엘리베이터를 사용하지 마세요.")
+        if GUIDE_GRAPH is not None:
+            final = GUIDE_GRAPH.invoke(initial)
+        else:
+            final = _run_sequential(initial)
+        guide = final.get("guide")
+        if isinstance(guide, dict):
             return guide
-        log.warning("AI 응답 검증 실패 → 폴백")
+        log.warning("그래프가 안내문을 만들지 못함 → 폴백")
     except Exception as exc:  # noqa: BLE001
-        log.warning("AI 호출 실패(%s) → 폴백", exc)
-
-    return fallback(route)
+        log.warning("행동요령 그래프 실행 실패(%s) → 폴백", exc)
+    return _safe_fallback(route)
