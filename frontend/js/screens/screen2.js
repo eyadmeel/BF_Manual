@@ -239,7 +239,7 @@ function syncScreen(s) {
   });
 
   drawPlan(s, []);
-  focusFireBeforeSelection(s);
+  showFireFloorBeforeSelection(s);
 }
 
 function scenarioOf(s) {
@@ -250,16 +250,14 @@ function fireOriginNode(s) {
   return nodeById(scenarioOf(s)?.origin_node);
 }
 
-/** 화면 데이터가 늦게 도착해도 경로 선택 전에는 화재 위치부터 보여준다. */
-function focusFireBeforeSelection(s) {
+/** 화면 데이터가 늦게 도착해도 경로 선택 전에는 화재가 난 층을 먼저 보여준다. */
+function showFireFloorBeforeSelection(s) {
   if (s.screen !== SCREEN.PLAN || s.route || isLoading('route')) return;
   const fireNode = fireOriginNode(s);
   if (!fireNode) return;
   if (Number(s.floor) !== Number(fireNode.floor)) {
     setFloor(fireNode.floor);
-    return;
   }
-  zoomToNodes([fireNode], { padding: 13, minWidth: 48 });
 }
 
 function visibleHazard(s) {
@@ -535,7 +533,7 @@ subscribe(['building', 'route', 'loading', 'mobility', 'scenarios', 'scenarioKey
 subscribe(['route', 'guide', 'loading', 'mobility'], syncGuide);
 subscribe(['mobility', 'profiles', 'route'], syncBadge);
 subscribe(['route', 'scenarios', 'scenarioKey'], syncHazardChip);
-subscribe(['screen', 'building', 'scenarios', 'scenarioKey', 'floor'], focusFireBeforeSelection);
+subscribe(['screen', 'building', 'scenarios', 'scenarioKey', 'floor'], showFireFloorBeforeSelection);
 subscribe(
   ['scenarios', 'scenarioKey', 'triggeredEvents', 'loading'],
   syncEventButton,
